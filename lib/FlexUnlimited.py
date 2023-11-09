@@ -125,7 +125,7 @@ class FlexUnlimited:
       
     self.__setDesiredWeekdays(desiredWeekdays)
 
-    if self.refreshToken == "":
+    if any(not x for x in [self.refreshToken, self.android_device_id, self.device_serial, self.flex_instance_id]):
       self.__registerAccount()
 
     self.__requestHeaders["x-amz-access-token"] = self.accessToken
