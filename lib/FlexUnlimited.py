@@ -540,6 +540,11 @@ class FlexUnlimited:
           from_=self.twilioFromNumber,
           body=offer.toString())
       Log.info(f"Successfully accepted an offer.")
+    elif request.status_code == 410:
+      Log.info(f"Offer already taken.")
+    elif request.status_code == 307:
+      Log.info(f"A captcha was required to accept an offer.")
+      sys.exit()
     else:
       Log.error(f"Unable to accept an offer. Request returned status code {request.status_code}")
 
