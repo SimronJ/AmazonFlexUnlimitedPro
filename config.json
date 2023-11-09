@@ -1,6 +1,4 @@
 {
-  "username": "",
-  "password": "",
   "minBlockRate": 150,
   "minPayRatePerHour": 32,
   "arrivalBuffer": 45,
@@ -15,5 +13,10 @@
   "twilioFromNumber": "",
   "twilioToNumber": "",
   "refreshToken": "",
-  "accessToken": ""
+  "accessToken": "",
+  "privateAttestationKey": "",
+  "publicAttestationKey": "",
+  "deviceId": "",
+  "deviceSerial": "",
+  "flexInstanceId": ""
 }
