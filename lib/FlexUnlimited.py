@@ -90,6 +90,8 @@ class FlexUnlimited:
         self.android_device_id = config["deviceId"]
         self.device_serial = config["deviceSerial"]
         self.flex_instance_id = config["flexInstanceId"]
+        self.key_id = config["keyId"]
+        self.key_id_expiration = config["keyIdExpiration"]
         self.session = requests.Session()
         
         desiredWeekdays = config["desiredWeekdays"]
@@ -115,7 +117,10 @@ class FlexUnlimited:
     if not private_key_str or not public_key_str:
       private_key, public_key = self.create_attestation_key()
       private_key_str, public_key_str = self.serialize_and_encode_keys(private_key, public_key)
-      self.save_attestation_key(private_key_str, public_key_str)
+      self.__update_config_file({
+        "privateAttestationKey": private_key_str,
+        "publicAttestationKey": public_key_str
+      })
     try:
       self.private_key = self.load_attestation_private_key(private_key_str)
       self.public_key = public_key_str
@@ -143,20 +148,6 @@ class FlexUnlimited:
       },
       "serviceAreaIds": self.serviceAreaIds
     }
-  
-  @staticmethod
-  def save_attestation_key(private_key_str: str, public_key_str: str):
-    try:
-      with open("config.json", "r+") as configFile:
-        config = json.load(configFile)
-        config["privateAttestationKey"] = private_key_str
-        config["publicAttestationKey"] = public_key_str
-        configFile.seek(0)
-        json.dump(config, configFile, indent=2)
-        configFile.truncate()
-    except Exception:
-      Log.error(traceback.format_exc())
-      sys.exit()
     
   def __updateFlexHeaders(self, headers: Dict):
     headers["X-Flex-Client-Time"] = self.__getFlexClientTime()
@@ -278,23 +269,13 @@ class FlexUnlimited:
     print("Displaying refresh token in case config file fails to save tokens.")
     print("If it fails, copy the refresh token into the config file manually.")
     print("Refresh token: " + self.refreshToken)
-    try:
-      with open("config.json", "r+") as configFile:
-        config = json.load(configFile)
-        config["accessToken"] = self.accessToken
-        config["refreshToken"] = self.refreshToken
-        config["deviceId"] = self.android_device_id
-        config["deviceSerial"] = self.device_serial
-        config["flexInstanceId"] = self.flex_instance_id
-        configFile.seek(0)
-        json.dump(config, configFile, indent=2)
-        configFile.truncate()
-    except KeyError as nullKey:
-      Log.error(f'{nullKey} was not set. Please setup FlexUnlimited as described in the README.')
-      sys.exit()
-    except FileNotFoundError:
-      Log.error("Config file not found. Ensure a properly formatted 'config.json' file exists in the root directory.")
-      sys.exit()
+    self.__update_config_file({
+        "accessToken": self.accessToken,
+        "refreshToken": self.refreshToken,
+        "deviceId": self.android_device_id,
+        "deviceSerial": self.device_serial,
+        "flexInstanceId": self.flex_instance_id
+    })
     print("registration successful")
 
   @staticmethod
@@ -336,19 +317,7 @@ class FlexUnlimited:
     }
     res = self.session.post(FlexUnlimited.routes.get("RequestNewAccessToken"), json=data, headers=headers).json()
     self.accessToken = res['access_token']
-    try:
-      with open("config.json", "r+") as configFile:
-        config = json.load(configFile)
-        config["accessToken"] = self.accessToken
-        configFile.seek(0)
-        json.dump(config, configFile, indent=2)
-        configFile.truncate()
-    except KeyError as nullKey:
-      Log.error(f'{nullKey} was not set. Please setup FlexUnlimited as described in the README.')
-      sys.exit()
-    except FileNotFoundError:
-      Log.error("Config file not found. Ensure a properly formatted 'config.json' file exists in the root directory.")
-      sys.exit()
+    self.__update_config_file({"accessToken": self.accessToken})
     self.__requestHeaders["x-amz-access-token"] = self.accessToken
     self.__acceptHeaders["x-amz-access-token"] = self.accessToken
     
@@ -407,9 +376,9 @@ class FlexUnlimited:
       debug_info = response.text
     Log.error(debug_info)
   
-  def sign_request(self, key_id: str, endpoint: str) -> dict:
+  def sign_request(self, endpoint: str) -> dict:
     nonce = self.__getFlexClientTime()
-    signature_params = f'("@path" "x-amzn-marketplace-id" "user-agent");created={nonce};nonce="{nonce}";alg="ecdsa-p256-sha256";keyid="{key_id}"'
+    signature_params = f'("@path" "x-amzn-marketplace-id" "user-agent");created={nonce};nonce="{nonce}";alg="ecdsa-p256-sha256";keyid="{self.key_id}"'
     message_parts = [
       f"\"@path\": {endpoint}",
       f"\"x-amzn-marketplace-id\": {MARKETPLACE}",
@@ -456,9 +425,29 @@ class FlexUnlimited:
       self.print_request_debug_info(response)
       sys.exit()
     response_json = response.json()
-    key_id: str = response_json.get('keyId')
-    expiration: int = response_json.get('expiration', 0)
-    return key_id, expiration
+    self.key_id: str = response_json.get('keyId')
+    self.key_id_expiration: int = response_json.get('expiration', 0)
+    self.__update_config_file({
+      "keyId": self.key_id,
+      "keyIdExpiration": self.key_id_expiration
+    })
+  
+  @staticmethod
+  def __update_config_file(key_pairs: dict):
+    try:
+      with open("config.json", "r+") as configFile:
+        config = json.load(configFile)
+        for key in key_pairs:
+          config[key] = key_pairs[key]
+        configFile.seek(0)
+        json.dump(config, configFile, indent=2)
+        configFile.truncate()
+    except KeyError as nullKey:
+      Log.error(f'{nullKey} was not set. Please setup FlexUnlimited as described in the README.')
+      sys.exit()
+    except FileNotFoundError:
+      Log.error("Config file not found. Ensure a properly formatted 'config.json' file exists in the root directory.")
+      sys.exit()
 
   def __getEligibleServiceAreas(self):
     self.__updateFlexHeaders(self.__requestHeaders)
@@ -531,6 +520,15 @@ class FlexUnlimited:
         FlexUnlimited.routes.get("AcceptOffer"),
         headers=self.__acceptHeaders,
         json={"offerId": offer.id})
+      
+    if request.status_code == 420:
+      self.register_attestation()
+      self.__updateFlexHeaders(self.__acceptHeaders)
+      self.sign_accept_headers()
+      request = self.session.post(
+        FlexUnlimited.routes.get("AcceptOffer"),
+        headers=self.__acceptHeaders,
+        json={"offerId": offer.id})
 
     if request.status_code == 200:
       self.__acceptedOffers.append(offer)
@@ -573,8 +571,9 @@ class FlexUnlimited:
     self.sign_accept_headers()
     
   def sign_accept_headers(self):
-    key_id, expiration = self.register_attestation()
-    signature_headers = self.sign_request(key_id, "/AcceptOffer")
+    if time.time() > self.key_id_expiration - 60:
+      self.register_attestation()
+    signature_headers = self.sign_request("/AcceptOffer")
     self.__acceptHeaders.update(signature_headers)
     self.__accept_headers_last_updated = time.time()
 

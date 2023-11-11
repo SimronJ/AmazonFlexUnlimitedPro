@@ -18,5 +18,7 @@
   "publicAttestationKey": "",
   "deviceId": "",
   "deviceSerial": "",
-  "flexInstanceId": ""
+  "flexInstanceId": "",
+  "keyId": "",
+  "keyIdExpiration": 0
 }
