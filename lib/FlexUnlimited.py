@@ -571,7 +571,7 @@ class FlexUnlimited:
     self.sign_accept_headers()
     
   def sign_accept_headers(self):
-    if time.time() > self.key_id_expiration - 60:
+    if time.time() * 1000 > self.key_id_expiration - 60000:
       self.register_attestation()
     signature_headers = self.sign_request("/AcceptOffer")
     self.__acceptHeaders.update(signature_headers)
